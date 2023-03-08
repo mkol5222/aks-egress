@@ -25,6 +25,8 @@ AKSSUBNET_NAME="aks-subnet"
 
 LINUXSUBNET_NAME="linux-subnet"
 PAASSUBNET_NAME="paas-subnet"
+
+AKSNAME=aks1
 ```
 
 ## Create VNET and subnets
@@ -101,6 +103,7 @@ az vm list-ip-addresses --ids $(az vm list -g $RG --query "[].id" -o tsv) | jq -
 ```
 
 Route Linux servers through Check Point
+
 ```bash
 az network route-table create -g $RG -l $LOC --name "$LINUXSUBNET_NAME-rt"
 
@@ -111,4 +114,40 @@ az network vnet subnet update \
   --name "$LINUXSUBNET_NAME" \
   --resource-group $RG \
   --route-table "$LINUXSUBNET_NAME-rt"
+```
+
+
+Deploy AKS cluster to AKS subnet
+
+```bash
+az network route-table create -g $RG -l $LOC --name "$AKSSUBNET_NAME-rt"
+
+az network route-table route create -g $RG --name "to-internet" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+
+az network vnet subnet update \
+  --vnet-name "$VNET_NAME"  \
+  --name "$AKSSUBNET_NAME" \
+  --resource-group $RG \
+  --route-table "$AKSSUBNET_NAME-rt"
+
+
+SUBNETID=$(az network vnet subnet show -g $RG --vnet-name $VNET_NAME --name $AKSSUBNET_NAME --query id -o tsv)
+
+az aks create -g $RG -n $AKSNAME -l $LOC \
+  --node-count 3 \
+  --network-plugin azure \
+  --outbound-type userDefinedRouting \
+  --vnet-subnet-id $SUBNETID 
+```
+
+Run first Pod on AKS
+```bash
+az aks get-credentials -g $RG -n $AKSNAME
+
+kubectl create deployment web1 --image nginx
+```
+
+Make some request from AKS to Internet
+```bash
+
 ```
