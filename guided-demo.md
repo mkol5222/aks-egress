@@ -381,6 +381,8 @@ mgmt_cli show data-center-server name "Azure" --session-id $session --format jso
 
 mgmt_cli show data-center-server name "K8S" --session-id $session --format json
 
+# show data-center-objects 
+mgmt_cli show data-center-objects  --session-id $session --format json
 
 mgmt_cli publish --session-id $session  # publish all changes in one session. Publish occur only once
 
