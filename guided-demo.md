@@ -217,7 +217,7 @@ metadata:
 EOF
 
 # note auth token:
-kubectl get secret/cloudguard-controller -o json | jq -r .data.token
+echo; kubectl get secret/cloudguard-controller -o json | jq -r .data.token | base64 -d ; echo; echo
 
 # note API server URL:
 kubectl cluster-info
