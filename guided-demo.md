@@ -170,7 +170,7 @@ for P in $(kubectl get pod -l 'app=web1' -o name); do kubectl exec -it $P -- cur
 
 Make Pod IPs visible by not SNATting traffic behind worker node IP:
 ```bash
-cat <<'EOF' | tee /tmp/azure-ip-masq-agent-config.yaml
+cat <<'EOF' | kubectl -n kube-system apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -190,7 +190,6 @@ data:
     masqLinkLocal: true
 EOF
 
-kubectl -n kube-system apply -f /tmp/azure-ip-masq-agent-config.yaml
 ```
 
 
