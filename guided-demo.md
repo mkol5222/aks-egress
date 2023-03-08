@@ -147,7 +147,7 @@ az aks get-credentials -g $RG -n $AKSNAME
 kubectl create deployment web1 --image nginx
 ```
 
-Make some request from AKS to Internet
+Make some request from AKS to Internet and see your egress IP.
 ```bash
-
+for P in $(kubectl get pod -l 'app=web2' -o name); do kubectl exec -it $P -- curl ifconfig.me ; echo ; done
 ```
