@@ -149,5 +149,66 @@ kubectl create deployment web1 --image nginx
 
 Make some request from AKS to Internet and see your egress IP.
 ```bash
-for P in $(kubectl get pod -l 'app=web2' -o name); do kubectl exec -it $P -- curl ifconfig.me ; echo ; done
+for P in $(kubectl get pod -l 'app=web1' -o name); do kubectl exec -it $P -- curl ifconfig.me ; echo ; done
+
+# scale and retry
+kubectl scale --replicas=3 deploy/web1
+for P in $(kubectl get pod -l 'app=web1' -o name); do kubectl exec -it $P -- curl ifconfig.me ; echo ; done
+```
+
+Make Pod IPs visible by not SNATting traffic behind worker node IP:
+```bash
+cat <<'EOF' | tee /tmp/azure-ip-masq-agent-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: azure-ip-masq-agent-config
+  namespace: kube-system
+  labels:
+    component: ip-masq-agent
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: EnsureExists
+data:
+  ip-masq-agent: |-
+    nonMasqueradeCIDRs:
+      - 10.42.1.0/24
+      - 10.0.0.0/16
+      - 10.42.0.0/16
+      - 0.0.0.0/0
+    masqLinkLocal: true
+EOF
+
+kubectl -n kube-system apply -f /tmp/azure-ip-masq-agent-config.yaml
+```
+
+
+Connect CloudGuard Controller to Kubernetes API server:
+```bash
+kubectl create serviceaccount cloudguard-controller
+kubectl create clusterrole endpoint-reader --verb=get,list --resource=endpoints
+kubectl create clusterrolebinding allow-cloudguard-access-endpoints --clusterrole=endpoint-reader --serviceaccount=default:cloudguard-controller
+kubectl create clusterrole pod-reader --verb=get,list --resource=pods
+kubectl create clusterrolebinding allow-cloudguard-access-pods --clusterrole=pod-reader --serviceaccount=default:cloudguard-controller
+kubectl create clusterrole service-reader --verb=get,list --resource=services
+kubectl create clusterrolebinding allow-cloudguard-access-services --clusterrole=service-reader --serviceaccount=default:cloudguard-controller
+kubectl create clusterrole node-reader --verb=get,list --resource=nodes
+kubectl create clusterrolebinding allow-cloudguard-access-nodes --clusterrole=node-reader --serviceaccount=default:cloudguard-controller
+
+# create token
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: cloudguard-controller
+  annotations:
+    kubernetes.io/service-account.name: "cloudguard-controller"
+EOF
+
+# note auth token:
+kubectl get secret/cloudguard-controller -o json | jq -r .data.token
+
+# note API server URL:
+kubectl cluster-info
+
 ```
