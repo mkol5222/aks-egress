@@ -21,10 +21,22 @@ RG="${PREFIX}-rg"
 LOC="westeurope"
 
 VNET_NAME="${PREFIX}-vnet"
+VNET_PREFIX="10.42.0.0/16"
+
 AKSSUBNET_NAME="aks-subnet"
+AKSSUBNET_IP="10.42.1.0/24"
+
+CPFRONTSUBNET_NAME="chkp_frontend-subnet"
+CPFRONTSUBNET_IP="10.42.3.0/24"
+
+CPBACKSUBNET_NAME="chkp_backend-subnet"
+CPBACKSUBNET_IP="10.42.4.0/24"
 
 LINUXSUBNET_NAME="linux-subnet"
+LINUXSUBNET_IP="10.42.5.0/24"
+
 PAASSUBNET_NAME="paas-subnet"
+PAASSUBNET_IP="10.42.6.0/24"
 
 AKSNAME=aks1
 ```
@@ -38,33 +50,33 @@ az network vnet create \
     --resource-group $RG \
     --name $VNET_NAME \
     --location $LOC \
-    --address-prefixes 10.42.0.0/16 \
+    --address-prefixes $VNET_PREFIX \
     --subnet-name $AKSSUBNET_NAME \
-    --subnet-prefix 10.42.1.0/24
+    --subnet-prefix $AKSSUBNET_IP
 
 az network vnet subnet create \
     --resource-group $RG \
     --vnet-name $VNET_NAME \
-    --name "chkp_frontend-subnet" \
-    --address-prefix 10.42.3.0/24
+    --name  $CPFRONTSUBNET_NAME \
+    --address-prefix $CPFRONTSUBNET_IP
     
 az network vnet subnet create \
     --resource-group $RG \
     --vnet-name $VNET_NAME \
-    --name "chkp_backend-subnet" \
-    --address-prefix 10.42.4.0/24
+    --name $CPBACKSUBNET_NAME \
+    --address-prefix $CPBACKSUBNET_IP
 
 az network vnet subnet create \
     --resource-group $RG \
     --vnet-name $VNET_NAME \
     --name $LINUXSUBNET_NAME \
-    --address-prefix 10.42.5.0/24
+    --address-prefix $LINUXSUBNET_IP
 
 az network vnet subnet create \
     --resource-group $RG \
     --vnet-name $VNET_NAME \
     --name $PAASSUBNET_NAME \
-    --address-prefix 10.42.6.0/24
+    --address-prefix $PAASSUBNET_IP
 ```
 
 Deploy Check Point Standalone Installation
@@ -211,4 +223,86 @@ kubectl get secret/cloudguard-controller -o json | jq -r .data.token
 # note API server URL:
 kubectl cluster-info
 
+```
+
+
+Deploy Azure AppService
+
+```bash
+
+# plan
+az appservice plan create \
+  --name myAppServicePlan \
+  --resource-group $RG \
+  --location $LOC \
+  --sku P1V2 \
+  --number-of-workers 1
+
+# service
+PROJECT_TAG=$(hexdump -vn16 -e'4/4 "%08X" 1 "\n"' /dev/urandom | cut -c-6);
+az webapp create \
+  --name mySiteName-$PROJECT_TAG \
+  --resource-group $RG \
+  --plan myAppServicePlan
+```
+
+Deploy private endpoint in PaaS subnet
+```bash
+WEBAPP_ID=$(az webapp list -g $RG | jq --arg N "mySiteName-$PROJECT_TAG" -r '.[]|select(.name==$N)|.id')
+
+az network private-endpoint create \
+  --name myPrivateEndpoint \
+  --resource-group $RG \
+  --vnet-name $VNET_NAME \
+  --subnet $PAASSUBNET_NAME \
+  --connection-name myConnectionName \
+  --private-connection-resource-id "$WEBAPP_ID" \
+  --group-id sites
+
+# DNS private zone
+
+az network private-dns zone create \
+    --name privatelink.azurewebsites.net \
+    --resource-group $RG
+
+az network private-dns link vnet create \
+    --name myDNSLink \
+    --resource-group $RG \
+    --registration-enabled false \
+    --virtual-network $VNET_NAME \
+    --zone-name privatelink.azurewebsites.net
+
+az network private-endpoint dns-zone-group create \
+  --name myZoneGroup \
+  --resource-group $RG \
+  --endpoint-name myPrivateEndpoint \
+  --private-dns-zone privatelink.azurewebsites.net \
+  --zone-name privatelink.azurewebsites.net
+```
+
+Deploy Bastion
+```bash
+bastionSubnetname="AzureBastionSubnet"
+resourceGroupName=$RG
+vnetName=$VNET_NAME
+bastionAdressPrefix="10.42.99.0/24"
+location=$LOC
+
+az network vnet subnet create -n $bastionSubnetname \
+                              -g $resourceGroupName \
+                              --vnet-name $vnetName \
+                              --address-prefixes $bastionAdressPrefix
+
+az network public-ip create  -n "pip_bastion" \
+                             -g $resourceGroupName \
+                             --sku Standard \
+                             --allocation-method Static 
+
+az network bastion create -n "bastion" \
+                          -g $resourceGroupName \
+                          --public-ip-address "pip_bastion" \
+                          --vnet-name $vnetName \
+                          --location $location    
+
+                         
 ```
