@@ -102,5 +102,13 @@ az vm list-ip-addresses --ids $(az vm list -g $RG --query "[].id" -o tsv) | jq -
 
 Route Linux servers through Check Point
 ```bash
+az network route-table create -g $RG -l $LOC --name "$LINUXSUBNET_NAME-rt"
 
+az network route-table route create -g $RG --name "to-internet" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+
+az network vnet subnet update \
+  --vnet-name "$VNET_NAME"  \
+  --name "$LINUXSUBNET_NAME" \
+  --resource-group $RG \
+  --route-table "$LINUXSUBNET_NAME-rt"
 ```
