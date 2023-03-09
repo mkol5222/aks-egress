@@ -26,6 +26,9 @@ VNET_PREFIX="10.42.0.0/16"
 AKSSUBNET_NAME="aks-subnet"
 AKSSUBNET_IP="10.42.1.0/24"
 
+AKS2SUBNET_NAME="aks2-subnet"
+AKS2SUBNET_IP="10.42.2.0/24"
+
 CPFRONTSUBNET_NAME="chkp_frontend-subnet"
 CPFRONTSUBNET_IP="10.42.3.0/24"
 
@@ -39,6 +42,7 @@ PAASSUBNET_NAME="paas-subnet"
 PAASSUBNET_IP="10.42.6.0/24"
 
 AKSNAME=aks1
+AKS2NAME=aks2
 ```
 
 ## Create VNET and subnets
@@ -78,6 +82,8 @@ az network vnet subnet create \
     --name $PAASSUBNET_NAME \
     --address-prefix $PAASSUBNET_IP
 ```
+
+
 
 Deploy Check Point Standalone Installation
 * https://portal.azure.com/#create/checkpoint.vsecsingle 
@@ -151,6 +157,35 @@ az aks create -g $RG -n $AKSNAME -l $LOC \
   --outbound-type userDefinedRouting \
   --vnet-subnet-id $SUBNETID 
 ```
+
+Deploy second AKS cluster
+```bash
+az network vnet subnet create \
+    --resource-group $RG \
+    --vnet-name $VNET_NAME \
+    --name  $AKS2SUBNET_NAME \
+    --address-prefix $AKS2SUBNET_IP
+
+az network route-table create -g $RG -l $LOC --name "$AKS2SUBNET_NAME-rt"
+
+az network route-table route create -g $RG --name "to-internet" --route-table-name "$AKS2SUBNET_NAME-rt" --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+
+az network vnet subnet update \
+  --vnet-name "$VNET_NAME"  \
+  --name "$AKS2SUBNET_NAME" \
+  --resource-group $RG \
+  --route-table "$AKS2SUBNET_NAME-rt"
+
+
+SUBNETID=$(az network vnet subnet show -g $RG --vnet-name $VNET_NAME --name $AKS2SUBNET_NAME --query id -o tsv)
+
+az aks create -g $RG -n $AKS2NAME -l $LOC \
+  --node-count 3 \
+  --network-plugin azure \
+  --outbound-type userDefinedRouting \
+  --vnet-subnet-id $SUBNETID 
+```
+
 
 Run first Pod on AKS
 ```bash
