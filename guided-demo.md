@@ -158,39 +158,22 @@ az aks create -g $RG -n $AKSNAME -l $LOC \
   --vnet-subnet-id $SUBNETID 
 ```
 
-Deploy second AKS cluster
+Fetch AKS clusters credentials
 ```bash
-az network vnet subnet create \
-    --resource-group $RG \
-    --vnet-name $VNET_NAME \
-    --name  $AKS2SUBNET_NAME \
-    --address-prefix $AKS2SUBNET_IP
+az aks get-credentials -g $RG -n $AKSNAME
+az aks get-credentials -g $RG -n $AKS2NAME
 
-az network route-table create -g $RG -l $LOC --name "$AKS2SUBNET_NAME-rt"
+# switch with
+kubectl config use-context aks1
+# or
+kubectl config use-context aks2
 
-az network route-table route create -g $RG --name "to-internet" --route-table-name "$AKS2SUBNET_NAME-rt" --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
-
-az network vnet subnet update \
-  --vnet-name "$VNET_NAME"  \
-  --name "$AKS2SUBNET_NAME" \
-  --resource-group $RG \
-  --route-table "$AKS2SUBNET_NAME-rt"
-
-
-SUBNETID=$(az network vnet subnet show -g $RG --vnet-name $VNET_NAME --name $AKS2SUBNET_NAME --query id -o tsv)
-
-az aks create -g $RG -n $AKS2NAME -l $LOC \
-  --node-count 3 \
-  --network-plugin azure \
-  --outbound-type userDefinedRouting \
-  --vnet-subnet-id $SUBNETID 
 ```
-
 
 Run first Pod on AKS
 ```bash
 az aks get-credentials -g $RG -n $AKSNAME
-
+kubectl config use-context aks1
 kubectl create deployment web1 --image nginx
 ```
 
@@ -258,6 +241,37 @@ echo; kubectl get secret/cloudguard-controller -o json | jq -r .data.token | bas
 kubectl cluster-info
 
 ```
+
+Deploy second AKS cluster
+```bash
+az network vnet subnet create \
+    --resource-group $RG \
+    --vnet-name $VNET_NAME \
+    --name  $AKS2SUBNET_NAME \
+    --address-prefix $AKS2SUBNET_IP
+
+az network route-table create -g $RG -l $LOC --name "$AKS2SUBNET_NAME-rt"
+
+az network route-table route create -g $RG --name "to-internet" --route-table-name "$AKS2SUBNET_NAME-rt" --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+
+az network vnet subnet update \
+  --vnet-name "$VNET_NAME"  \
+  --name "$AKS2SUBNET_NAME" \
+  --resource-group $RG \
+  --route-table "$AKS2SUBNET_NAME-rt"
+
+
+SUBNETID=$(az network vnet subnet show -g $RG --vnet-name $VNET_NAME --name $AKS2SUBNET_NAME --query id -o tsv)
+
+az aks create -g $RG -n $AKS2NAME -l $LOC \
+  --node-count 3 \
+  --network-plugin azure \
+  --network-policy azure \
+  --outbound-type userDefinedRouting \
+  --vnet-subnet-id $SUBNETID 
+```
+
+* https://zimmergren.net/switch-context-multiple-kubernetes-clusters-aks-azure/
 
 
 Deploy Azure AppService
@@ -371,17 +385,25 @@ az network vnet subnet update \
 az network route-table route create -g $RG --name "to-aks" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix $AKSSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 az network route-table route create -g $RG --name "to-pass" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix $PAASSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 az network route-table route create -g $RG --name "to-private-ep" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix 10.42.6.4/32 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
-
+az network route-table route create -g $RG --name "to-aks2" --route-table-name "$LINUXSUBNET_NAME-rt" --address-prefix 10.42.2.0/24 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 
 # from AKS
 az network route-table route create -g $RG --name "to-linux" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix $LINUXSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 az network route-table route create -g $RG --name "to-pass" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix $PAASSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 az network route-table route create -g $RG --name "to-private-ep" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix 10.42.6.4/32 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-aks2" --route-table-name "$AKSSUBNET_NAME-rt" --address-prefix 10.42.2.0/24 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 
+
+# from AKS2
+az network route-table route create -g $RG --name "to-linux" --route-table-name "$AKS2SUBNET_NAME-rt" --address-prefix $LINUXSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-pass" --route-table-name "$AKS2SUBNET_NAME-rt" --address-prefix $PAASSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-private-ep" --route-table-name "$AKS2SUBNET_NAME-rt" --address-prefix 10.42.6.4/32 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-aks1" --route-table-name "$AKS2SUBNET_NAME-rt" --address-prefix 10.42.1.0/24 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 
 # from PASS
 az network route-table route create -g $RG --name "to-linux" --route-table-name "$PAASSUBNET_NAME-rt" --address-prefix $LINUXSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 az network route-table route create -g $RG --name "to-aks" --route-table-name "$PAASSUBNET_NAME-rt" --address-prefix $AKSSUBNET_IP --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
+az network route-table route create -g $RG --name "to-aks2" --route-table-name "$PAASSUBNET_NAME-rt" --address-prefix 10.42.2.0/24 --next-hop-type VirtualAppliance --next-hop-ip-address 10.42.4.4
 ```
 
 
@@ -424,4 +446,93 @@ mgmt_cli publish --session-id $session  # publish all changes in one session. Pu
 mgmt_cli install-policy policy-package "Standard" access true threat-prevention true --session-id $session --format json
 
 mgmt_cli logout --session-id $session  # logout once
+```
+
+
+Create api_user / **** - 137.117.140.179
+Manage&Setting / Blades / Management API / Advanced Settings - access control
+```
+api stop
+api start
+api status
+
+[Expert@chkp:0]# api status
+
+API Settings:
+---------------------
+Accessibility:                      Require all granted
+Automatic Start:                    Enabled
+```
+
+## AKS internal traffic
+
+```bash
+# if not created with network-policy option
+az aks delete --name aks2 -g $RG
+
+# this is how it should be created
+SUBNETID=$(az network vnet subnet show -g $RG --vnet-name $VNET_NAME --name $AKS2SUBNET_NAME --query id -o tsv)
+
+az aks create -g $RG -n $AKS2NAME -l $LOC \
+  --node-count 3 \
+  --network-plugin azure \
+  --network-policy azure \
+  --outbound-type userDefinedRouting \
+  --vnet-subnet-id $SUBNETID 
+
+az aks get-credentials -g $RG -n $AKS2NAME
+
+kubectl config use-context aks2
+```
+
+Try without Pod Network Policy
+```bash
+kubectl create ns demo
+
+# server
+kubectl run server -n demo --image nginx --labels="app=server" 
+# client - other windows
+kubectl run client -n demo --image nginx 
+
+# see IP
+kubectl get pod -n demo -o wide
+
+# in client Pod shell
+kubectl exec -it client -n demo -- curl server-pod-ip -vv
+```
+
+Implement policy and try now
+```bash
+cat << 'EOF' | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-policy
+  namespace: demo
+spec:
+  podSelector:
+    matchLabels:
+      app: server
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: client
+    ports:
+    - port: 80
+      protocol: TCP
+EOF
+
+# in client Pod shell
+kubectl exec -it client -n demo -- curl server-pod-ip -vv
+# should fail because client is not labeled
+
+# add level
+kubectl label pod client -n demo app=client
+# retry
+kubectl exec -it client -n demo -- curl server-pod-ip -vv
+# sucessful connection
+
+# this is how to remove label
+kubectl label pod client -n demo app-
 ```
