@@ -152,7 +152,7 @@ az network vnet subnet update \
 SUBNETID=$(az network vnet subnet show -g $RG --vnet-name $VNET_NAME --name $AKSSUBNET_NAME --query id -o tsv)
 
 az aks create -g $RG -n $AKSNAME -l $LOC \
-  --node-count 3 \
+  --node-count 1 \
   --network-plugin azure \
   --outbound-type userDefinedRouting \
   --vnet-subnet-id $SUBNETID 
@@ -201,9 +201,6 @@ metadata:
 data:
   ip-masq-agent: |-
     nonMasqueradeCIDRs:
-      - 10.42.1.0/24
-      - 10.0.0.0/16
-      - 10.42.0.0/16
       - 0.0.0.0/0
     masqLinkLocal: true
 EOF
